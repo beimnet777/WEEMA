@@ -25,13 +25,13 @@ def get_location_level_graph_data(start_date=None, end_date=None, cluster=None, 
         group_field = 'Zone'
         groups_qs = groups_qs.filter(region=region)
     
+    if zone:
+        group_field = 'woreda'
+        groups_qs = groups_qs.filter(Zone=zone)
     # decide which field to group by
     if woreda:
         group_field = 'woreda'
         groups_qs = groups_qs.filter(woreda=woreda)
-    if zone:
-        group_field = 'woreda'
-        groups_qs = groups_qs.filter(Zone=zone)
         
     
     # Get distinct, non-empty location values from SelfHelpGroup.

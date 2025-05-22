@@ -1,0 +1,93 @@
+name: CI/CD for Weema
+
+on:
+  push:
+    branches:
+      - render
+
+env:
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
+  DOCKER_IMAGE: docker.io/${{ secrets.DOCKER_USERNAME }}/weematest
+  SSH_USER: meewadmin
+  SSH_HOST: 196.189.61.136
+  SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+  PORT: ${{ secrets.PORT }}
+
+jobs:
+  build:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to Docker Hub with Token
+        run: |
+          echo "$DOCKER_TOKEN" | docker login -u "$DOCKER_USERNAME" --password-stdin
+
+      - name: Build Docker Image
+        run: |
+          echo "Building Docker Image: $DOCKER_IMAGE:latest"
+          docker build -t $DOCKER_IMAGE:latest .
+
+      - name: Push Docker Image to Docker Hub
+        run: |
+          echo "Pushing Docker Image: $DOCKER_IMAGE:latest"
+          docker push $DOCKER_IMAGE:latest
+
+  deploy:
+    name: Deploy to EC2
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install sshpass
+        run: sudo apt-get install -y sshpass
+
+      - name: SSH and Deploy on EC2
+        run: |
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -T -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST << 'EOF'
+            echo "🚀 Connecting to EC2 instance..."
+            
+            # Ensure Docker is running
+            echo "🔹 Starting Docker service if not running..."
+            sudo systemctl start docker || true
+
+            # Login to Docker Hub with Token
+            echo "🔑 Logging in to Docker Hub..."
+            echo "${{ secrets.DOCKER_TOKEN }}" | sudo docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+            
+            
+            # Pull latest Docker image
+            echo "🐳 Pulling latest Docker Image: $DOCKER_IMAGE:latest"
+            sudo docker pull docker.io/${{ secrets.DOCKER_USERNAME }}/weematest:latest
+
+            # Run new container
+            echo "🚀 Running new Docker container..."
+            sudo docker run -d \
+              -p 3001:${{ secrets.PORT }} \
+              --name weemaBackend \
+              --network host \
+              -e DB_NAME=${{ secrets.DB_NAME }} \
+              -e DB_USERNAME=${{ secrets.DB_USERNAME }} \
+              -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+              -e DB_HOST=localhost \
+              -e DB_PORT=${{ secrets.DB_PORT }} \
+              -e DEBUG=${{ secrets.DEBUG }} \
+              -e JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }} \
+              -e JWT_TOKEN_LIFE_MIN=${{ secrets.JWT_TOKEN_LIFE_MIN }} \
+              -e CLOUDINARY_CLOUD_NAME=${{ secrets.CLOUDINARY_CLOUD_NAME }} \
+              -e CLOUDINARY_API_KEY=${{ secrets.CLOUDINARY_API_KEY }} \
+              -e CLOUDINARY_API_SECRET=${{ secrets.CLOUDINARY_API_SECRET }} \
+              -e EMAIL_HOST=${{ secrets.EMAIL_HOST }} \
+              -e EMAIL_HOST_USER=${{ secrets.EMAIL_HOST_USER }} \
+              -e EMAIL_HOST_PASSWORD="${{ secrets.EMAIL_HOST_PASSWORD }}" \
+              -e DEFAULT_FROM_EMAIL=${{ secrets.DEFAULT_FROM_EMAIL }} \
+              docker.io/${{ secrets.DOCKER_USERNAME }}/weematest:latest
+          EOF

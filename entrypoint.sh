@@ -31,14 +31,8 @@ echo "Waiting for PostgreSQL to be ready..."
 until postgres_ready; do
   sleep 1
 done
-echo "PostgreSQL is ready."
-
-# Ensure migrations are created for account_management app
 python manage.py makemigrations --noinput
 
-# Run migrations
-echo "Applying database migrations..."
-python manage.py migrate --noinput
 echo "Database migrations applied."
 python manage.py collectstatic --noinput
 
